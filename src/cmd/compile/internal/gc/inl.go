@@ -151,7 +151,7 @@ func caninl(fn *Node) {
 	}
 	defer n.Func.SetInlinabilityChecked(true)
 
-	const maxBudget = 80
+	const maxBudget = 4000
 	visitor := hairyVisitor{budget: maxBudget}
 	if visitor.visitList(fn.Nbody) {
 		reason = visitor.reason
