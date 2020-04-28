@@ -269,6 +269,10 @@ control the execution of any test:
 	    the Go tree can run a sanity check but not spend time running
 	    exhaustive tests.
 
+	-shuffle
+	    Randomize the order of tests before they are run.
+	    Can help to find out test ordering assumptions.
+
 	-timeout d
 	    If a test binary runs longer than duration d, panic.
 	    If d is 0, the timeout is disabled.
@@ -477,6 +481,7 @@ var (
 	testList         string                            // -list flag
 	testO            string                            // -o flag
 	testOutputDir    = base.Cwd                        // -outputdir flag
+	testShuffle      string                            // -shuffle flag
 	testTimeout      time.Duration                     // -timeout flag
 	testV            bool                              // -v flag
 	testVet          = vetFlag{flags: defaultVetFlags} // -vet flag

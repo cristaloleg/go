@@ -270,6 +270,9 @@ func Init() {
 	// full test of the package.
 	short = flag.Bool("test.short", false, "run smaller test suite to save time")
 
+	// The shuffle flag requests that the test execution order will be randomized per package.
+	shuffle = flag.String("test.shuffle", "off", "randomizes order of tests")
+
 	// The failfast flag requests that test execution stop after the first test failure.
 	failFast = flag.Bool("test.failfast", false, "do not start new tests after the first test failure")
 
@@ -303,6 +306,7 @@ func Init() {
 var (
 	// Flags, registered during Init.
 	short                *bool
+	shuffle              *string
 	failFast             *bool
 	outputDir            *string
 	chatty               *bool
@@ -1192,6 +1196,9 @@ type M struct {
 
 	numRun int
 
+	isShuffleOn bool
+	shuffleSeed int64
+
 	// value to pass to os.Exit, the outer test func main
 	// harness calls os.Exit with this code. See #34129.
 	exitCode int
@@ -1216,12 +1223,48 @@ type testDeps interface {
 // It may change signature from release to release.
 func MainStart(deps testDeps, tests []InternalTest, benchmarks []InternalBenchmark, examples []InternalExample) *M {
 	Init()
+
+	tests, isShuffleOn, shuffleSeed := shuffleTests(tests)
+
 	return &M{
 		deps:       deps,
 		tests:      tests,
 		benchmarks: benchmarks,
 		examples:   examples,
+
+		isShuffleOn: isShuffleOn,
+		shuffleSeed: shuffleSeed,
 	}
+}
+
+// shuffleTests if a test.shuffle flag is enabled.
+func shuffleTests(tests []InternalTest) ([]InternalTest, bool, int64) {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	if shuffle == nil || *shuffle == "off" {
+		return tests, false, 0
+	}
+
+	var seed int64
+	if *shuffle == "on" {
+		seed = time.Now().UnixNano()
+	} else {
+		s, err := strconv.ParseInt(*shuffle, 10, 64)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "testing: -shuffle can be 'on', 'off' or an integer")
+			os.Exit(1)
+		}
+		seed = s
+	}
+
+	rnd := makeLCG(seed)
+	for end := len(tests) - 1; end > 0; end-- {
+		i := rnd() // TODO
+		tests[i], tests[end] = tests[end], tests[i]
+	}
+	return tests, true, seed
 }
 
 // Run runs the tests. It returns an exit code to pass to os.Exit.
@@ -1260,6 +1303,9 @@ func (m *M) Run() (code int) {
 	defer m.after()
 	deadline := m.startAlarm()
 	haveExamples = len(m.examples) > 0
+	if *chatty && m.isShuffleOn {
+		fmt.Printf("tests were shuffled with a seed %v\n", m.shuffleSeed)
+	}
 	testRan, testOk := runTests(m.deps.MatchString, m.tests, deadline)
 	exampleRan, exampleOk := runExamples(m.deps.MatchString, m.examples)
 	m.stopAlarm()
@@ -1267,6 +1313,10 @@ func (m *M) Run() (code int) {
 		fmt.Fprintln(os.Stderr, "testing: warning: no tests to run")
 	}
 	if !testOk || !exampleOk || !runBenchmarks(m.deps.ImportPath(), m.deps.MatchString, m.benchmarks) || race.Errors() > 0 {
+		if m.isShuffleOn {
+			fmt.Fprintf(os.Stderr, "testing: test shuffling was enabled and seed was: %v\n", m.shuffleSeed)
+			fmt.Fprintf(os.Stderr, "to repeat same test order use -shuffle=%v param\n\n", m.shuffleSeed)
+		}
 		fmt.Println("FAIL")
 		m.exitCode = 1
 		return
@@ -1563,4 +1613,22 @@ func parseCpuList() {
 
 func shouldFailFast() bool {
 	return *failFast && atomic.LoadUint32(&numFailed) > 0
+}
+
+// makeLCG create a Linear congruential generator.
+// Due to cyclic import of math/rand we need another generator.
+// See: https://en.wikipedia.org/wiki/Linear_congruential_generator
+func makeLCG(seed int64) func() int64 {
+	// glibc consts
+	const a int64 = 1103515245
+	const c int64 = 12345
+	const m int64 = 1 << 31
+
+	xn := seed
+
+	return func() int64 {
+		xn1 := (a*xn + c) % m
+		xn = xn1
+		return xn
+	}
 }

@@ -65,6 +65,7 @@ func init() {
 	cf.Int("parallel", 0, "")
 	cf.String("run", "", "")
 	cf.Bool("short", false, "")
+	cf.StringVar(&testShuffle, "shuffle", "off", "")
 	cf.DurationVar(&testTimeout, "timeout", 10*time.Minute, "")
 	cf.StringVar(&testTrace, "trace", "", "")
 	cf.BoolVar(&testV, "v", false, "")
@@ -331,6 +332,10 @@ func testFlags(args []string) (packageNames, passToTest []string) {
 	// requests output.
 	if testProfile() != "" && !outputDirSet {
 		injectedFlags = append(injectedFlags, "-test.outputdir="+testOutputDir)
+	}
+
+	if testShuffle != "" {
+		injectedFlags = append(injectedFlags, "-test.shuffle="+testShuffle)
 	}
 
 	// Ensure that -race and -covermode are compatible.
