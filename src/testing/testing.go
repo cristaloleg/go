@@ -240,6 +240,7 @@ import (
 	"internal/race"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -1249,7 +1250,8 @@ func shuffleTests(tests []InternalTest) ([]InternalTest, bool, int64) {
 
 	var seed int64
 	if *shuffle == "on" {
-		seed = time.Now().UnixNano()
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		seed = r.Int63()
 	} else {
 		s, err := strconv.ParseInt(*shuffle, 10, 64)
 		if err != nil {
